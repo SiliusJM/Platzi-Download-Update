@@ -230,6 +230,20 @@ undetected-chromedriver>=3.5.4
 
 ---
 
+### ❌ Problema 8 — `ModuleNotFoundError: No module named 'distutils'` en Python 3.13
+
+**Descripción:** Al ejecutar `python main.py` después de instalar las dependencias con Python 3.13, el programa falla inmediatamente al importar `undetected_chromedriver`:
+```
+File "...\undetected_chromedriver\patcher.py", line 4, in <module>
+    from distutils.version import LooseVersion
+ModuleNotFoundError: No module named 'distutils'
+```
+El módulo `distutils` fue eliminado definitivamente de la librería estándar en Python 3.13 (se deprecó en 3.10 y se removió en 3.12/3.13). `undetected-chromedriver 3.5.5` aún lo usa internamente en su archivo `patcher.py`.
+
+**Solución aplicada:** Se agregó `setuptools>=70.0.0` al `requirements.txt`. `setuptools` incluye una capa de compatibilidad (`distutils-precedence.pth`) que restaura `distutils` como módulo importable en Python 3.13, lo que permite que `undetected-chromedriver` funcione sin modificar su código fuente.
+
+---
+
 ## 💕 Sponsor
 
 - Si el proyecto original te ha sido útil, apoya a su creador original:
