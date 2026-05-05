@@ -394,7 +394,7 @@ def getCourseImage(driver, link, courseName, published):
         pass
     try:
         # save the course link
-        with open(f"./videos/{courseName}/Course Link.txt", "w") as f:
+        with open(f"./videos/{courseName}/Course Link.txt", "w", encoding="utf-8") as f:
             f.write(link + "\n" + published)
         courseInfo = driver.find_element(By.CLASS_NAME, courseInfoSelector)
         driver.execute_script("arguments[0].scrollIntoView();", courseInfo)
@@ -625,7 +625,7 @@ def work():
             videoPlayer = None
         print("Finding videos...")
         if not checkFileExists(f"\\videos\\{courseName}\\playlist.m3u"):
-            with open(f"./videos/{courseName}/playlist.m3u", "w") as file:
+            with open(f"./videos/{courseName}/playlist.m3u", "w", encoding="utf-8") as file:
                 file.write("#EXTM3U\n")
         nameClass = ""
         countVideoErrors = 0
@@ -668,11 +668,11 @@ def work():
                     # check the status code
                     if respVideo.status_code == 200:
                         videosUrl[nameClass] = video
-                        with open(f"./videos/{courseName}/playlist.m3u", "a") as file:
+                        with open(f"./videos/{courseName}/playlist.m3u", "a", encoding="utf-8") as file:
                             ##check if the video is already in the playlist
                             if (
                                 not format_entry(nameClass, video)
-                                in open(f"./videos/{courseName}/playlist.m3u").read()
+                                in open(f"./videos/{courseName}/playlist.m3u", encoding="utf-8").read()
                             ):
                                 file.write(format_entry(nameClass, video) + "\n")
                         video = ""
@@ -697,6 +697,7 @@ def work():
                     "./videos/{}/lectures/{}.mhtml".format(courseName, nameClass),
                     "w",
                     newline="",
+                    encoding="utf-8",
                 ) as f:
                     f.write(res["data"])
             else:
@@ -736,7 +737,7 @@ def work():
             time.sleep(1)
         driver.close()
         if len(lecturesUrls) > 0:
-            with open(f"./videos/{courseName}/lectures/Lectures Urls.txt", "a") as f:
+            with open(f"./videos/{courseName}/lectures/Lectures Urls.txt", "a", encoding="utf-8") as f:
                 for item in lecturesUrls:
                     f.write("%s\n" % item)
         if videosUrl or subtitles:
