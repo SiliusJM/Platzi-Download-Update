@@ -672,7 +672,7 @@ def work():
                             ##check if the video is already in the playlist
                             if (
                                 not format_entry(nameClass, video)
-                                in open(f"./videos/{courseName}/playlist.m3u", encoding="utf-8").read()
+                                in open(f"./videos/{courseName}/playlist.m3u", encoding="utf-8", errors="replace").read()
                             ):
                                 file.write(format_entry(nameClass, video) + "\n")
                         video = ""
