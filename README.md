@@ -17,7 +17,7 @@ Permite descargar videos de Platzi muchos más rápido. Permite descargar tanto 
 - Tener **Google Chrome** instalado.
 - Tener instalado **FFmpeg** (ver instrucciones de instalación más abajo).
 - ~~Descargar chromedriver.exe manualmente~~ → **Ya no es necesario** (ver sección de actualizaciones).
-- Tener **Python 3.10+** instalado.
+- Tener **Python 3.10+** instalado (incluido Python 3.13).
 - Instalar las dependencias con `pip install -r requirements.txt`.
 - Configurar el archivo `.env` que se genera al ejecutar el programa por primera vez:
   1. `EMAIL` = `"tuemail@email.com"`
@@ -205,6 +205,28 @@ o simplemente que Chrome no arrancara si la versión no coincidía.
 **Descripción:** El selector CSS `BadgeWithText_BadgeWithText` para obtener el nombre del curso dejó de funcionar de forma confiable tras cambios en el frontend de Platzi.
 
 **Solución aplicada:** El nombre del curso ahora se extrae principalmente del **título de la página** (`driver.title`), que sigue el formato estable `"Nombre Clase | Nombre Curso | Platzi"`. Los selectores CSS y el slug de URL quedan como fallback en ese orden.
+
+---
+
+### ❌ Problema 7 — `requirements.txt` incompatible con Python 3.13
+
+**Descripción:** El `requirements.txt` original era una exportación de `pip freeze` que incluía todas las dependencias transitivas y herramientas de build con versiones exactas (`==`) antiguas. Al instalar en Python 3.13 fallaba inmediatamente con:
+```
+ERROR: Failed to build 'pillow' when getting requirements to build wheel
+KeyError: '__version__'
+```
+Los paquetes problemáticos eran `pillow==10.2.0` (no compila en Python 3.13) y `cffi==1.15.1`. Además el archivo incluía paquetes que nunca se usan en el proyecto: `Django`, `pyinstaller`, `pefile`, `pywin32-ctypes`, `sqlparse`, `altgraph`, etc.
+
+**Solución aplicada:** Se reescribió el `requirements.txt` con **únicamente las 6 dependencias reales** del proyecto usando versiones mínimas (`>=`) en lugar de pins exactos, lo que permite que pip resuelva versiones compatibles con cualquier Python 3.10+:
+
+```
+pillow>=10.4.0
+pyfiglet>=1.0.2
+python-dotenv>=1.0.0
+requests>=2.30.0
+selenium>=4.18.0
+undetected-chromedriver>=3.5.4
+```
 
 ---
 
