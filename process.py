@@ -62,22 +62,22 @@ def checkDuration(process, command):
 
 
 def downloadSubs(subtitles, courseName):
-    subsPath = f"videos/{courseName}/Subs"
-    if not checkFolderExists(f"\\videos\\{courseName}\\Subs"):
-        subprocess.run(f"cd videos/{courseName} && mkdir Subs", shell=True)
     for key, value in subtitles.items():
         if len(value) > 0:
+            subsPath = f"videos/{courseName}/{key}"
+            os.makedirs(subsPath, exist_ok=True)
             for sub in value:
                 name = f"{key}.{sub['language']}.vtt"
-                if not checkFileExists(f"\\videos\\{courseName}\\Subs\\{name}"):
+                srtName = f"{key}.{sub['language']}.srt"
+                if not checkFileExists(f"\\videos\\{courseName}\\{key}\\{srtName}"):
                     userAgent = headers["User-Agent"]
                     subprocess.run(
-                        f'cd videos/{courseName}/Subs && curl -A "{userAgent}" {sub["source"]} -o "{name}"',
+                        f'cd "{subsPath}" && curl -A "{userAgent}" {sub["source"]} -o "{name}"',
                         shell=True,
                     )
                     # convert to srt
                     subprocess.run(
-                        f'cd videos/{courseName}/Subs && ffmpeg -i "{name}" "{name[:-4]}.srt"',
+                        f'cd "{subsPath}" && ffmpeg -i "{name}" "{srtName}"',
                         shell=True,
                         stdout=subprocess.PIPE,
                         stderr=subprocess.PIPE,
@@ -85,10 +85,8 @@ def downloadSubs(subtitles, courseName):
                     )
                     # remove the vtt file
                     subprocess.run(
-                        f'cd videos/{courseName}/Subs && del "{name}"', shell=True
+                        f'cd "{subsPath}" && del "{name}"', shell=True
                     )
-    if is_folder_empty(subsPath):
-        os.rmdir(subsPath)
 
 
 # region Create and run commands
@@ -97,7 +95,7 @@ def createCommands(info, courseName):
     errorGettingClasses = []
     folder = 'cd videos/"{}" &&'.format(courseName)
     for key, value in info.items():
-        if not checkFileExists(f"\\videos\\{courseName}\\{key}.mp4"):
+        if not checkFileExists(f"\\videos\\{courseName}\\{key}\\{key}.mp4"):
             classError = getInfo(value, courseName, key)
             if classError:
                 errorGettingClasses.append(classError)

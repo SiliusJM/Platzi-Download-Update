@@ -2,10 +2,11 @@
 import undetected_chromedriver as uc
 from selenium import webdriver
 from selenium.webdriver.chrome.service import Service
-from selenium.webdriver.common.desired_capabilities import DesiredCapabilities
+import subprocess as _subprocess
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
+from selenium.webdriver.common.keys import Keys
 import time
 import json
 import requests, re
@@ -94,7 +95,7 @@ def downloadResources(driver, courseName, nameClass):
         downloadAllBtn = driver.find_elements(
             By.XPATH, f"//*[contains(@class, '{checkDownloadAllSelector}')]"
         )
-        path = f"./videos/{courseName}/resources/"
+        path = f"./videos/{courseName}/{nameClass}/resources/"
         # get the href of the download links
         if downloadAllBtn:
             downloadAllBtn = downloadAllBtn[0]
@@ -105,7 +106,7 @@ def downloadResources(driver, courseName, nameClass):
             # download the file
             if link != "":
                 if not checkFileExists(
-                    f"\\videos\\{courseName}\\resources\\{fileName}"
+                    f"\\videos\\{courseName}\\{nameClass}\\resources\\{fileName}"
                 ):
                     response = requests.get(link)
                     if response.status_code == 200:
@@ -128,7 +129,7 @@ def downloadResources(driver, courseName, nameClass):
                 # download the file
                 if link != "":
                     if not checkFileExists(
-                        f"\\videos\\{courseName}\\resources\\{fileName}"
+                        f"\\videos\\{courseName}\\{nameClass}\\resources\\{fileName}"
                     ):
                         response = request_with_random_user_agent(link)
                         if response.status_code == 200:
@@ -154,8 +155,8 @@ def downloadResources(driver, courseName, nameClass):
     if checkAvailableResources:
         download_elements = driver.find_elements(By.CSS_SELECTOR, "a[download]")
         if download_elements:
-            if not checkFolderExists(f"\\videos\\{courseName}\\resources"):
-                createFolder("\\videos\\" + courseName + "\\resources")
+            if not checkFolderExists(f"\\videos\\{courseName}\\{nameClass}\\resources"):
+                createFolder("\\videos\\" + courseName + "\\" + nameClass + "\\resources")
             # get the href of the download links
             for element in download_elements:
                 link = element.get_attribute("href")
@@ -164,11 +165,11 @@ def downloadResources(driver, courseName, nameClass):
                 # download the file
                 if link != "":
                     if not checkFileExists(
-                        f"\\videos\\{courseName}\\resources\\{fileName}"
+                        f"\\videos\\{courseName}\\{nameClass}\\resources\\{fileName}"
                     ):
                         response = requests.get(link)
                         if response.status_code == 200:
-                            path = "./videos/{}/resources/".format(courseName)
+                            path = "./videos/{}/{}/resources/".format(courseName, nameClass)
                             with open(f"{path}{fileName}", "wb") as f:
                                 f.write(response.content)
 
@@ -179,12 +180,15 @@ def menu():
     # Print colored text
     print(colorize_text(titleFont.renderText("  Platzi Download")))
     print(colorize_text("By OscarDogar\n", "4;32"))
+    print(colorize_text("Updated by SiliusXix(JMSG)\n", "4;32"))
 
     while True:
         # The input string containing the URL
         startUrl = input("Please enter the URL of the class you want to download: ")
-        if "clases" in startUrl:
+        # Accept old format (/clases/) and new format (/cursos/course/class/)
+        if "clases" in startUrl or ("cursos" in startUrl and startUrl.count("/") >= 6):
             break
+        print(colorize_text("Please enter a specific class URL (not the course page).\nExample: https://platzi.com/cursos/nombre-curso/nombre-clase/", 31))
     print("")
     inputOption = input(
         "Do you want to download only this video or this and the following videos?\n\n1. Just this one\n2. This one and the following\nType: "
@@ -207,13 +211,20 @@ def main():
 
 
 def getClassName(driver):
-    className = driver.find_elements(By.XPATH, classNameSelector)[1]
+    classNameElements = driver.find_elements(By.XPATH, classNameSelector)
+    if len(classNameElements) > 1:
+        className = classNameElements[1]
+    elif len(classNameElements) == 1:
+        className = classNameElements[0]
+    else:
+        return "clase_sin_nombre"
     result = re.sub(r"Clase\s\d.*$", "", className.text)
     return re.sub(r"[^\w\s]", "", result)
 
 
 def getClassNumber(driver):
     html_content = driver.page_source
+    # Try original selector
     position = html_content.find(classNumberSelector)
     if position != -1:
         rest_of_text = html_content[position + len(classNumberSelector) :]
@@ -222,25 +233,88 @@ def getClassNumber(driver):
         if match:
             number = match.group().split("/")
             return [substring.strip() for substring in number]
-        else:
-            # throw error
-            raise Exception("Could not find the class number")
-    else:
-        print(f"Class number was not found.")
+    # Fallback: try data-qa class_title for number pattern
+    numbersPattern = r'(\d+)\s*de\s*(\d+)'
+    match = re.search(numbersPattern, html_content)
+    if match:
+        return [match.group(1), match.group(2)]
+    # Last fallback: return unknown
+    print("Class number was not found, using fallback.")
+    return ["1", "1"]
 
 
 def nextPage(driver):
-    btnNext = driver.find_elements(By.XPATH, nextClassBtnSelector)[0]
+    # Dismiss any open modal overlay (e.g. profile completion popup)
+    try:
+        skip_btn = driver.find_element(By.XPATH, "//*[contains(text(), 'Omitir por ahora')]")
+        skip_btn.click()
+        time.sleep(1)
+    except Exception:
+        pass
+    # Also dismiss via modal overlay close button if present
+    try:
+        overlay = driver.find_element(By.ID, "modal-overlay")
+        if overlay.is_displayed():
+            driver.execute_script("arguments[0].style.pointerEvents='none';", overlay)
+    except Exception:
+        pass
+
+    btnNextList = driver.find_elements(By.XPATH, nextClassBtnSelector)
+    if not btnNextList:
+        print("There was an error finding the next class button")
+        return False
+    btnNext = btnNextList[0]
 
     # check if the button is disabled
     if btnNext.is_enabled():
-        btnNext.click()
+        try:
+            btnNext.click()
+        except Exception:
+            # Modal still intercepting — use JS click to bypass
+            driver.execute_script("arguments[0].click();", btnNext)
     else:
         print("There was an error finding the next class button")
+        return False
+    return True
 
 
 def format_entry(name, url):
     return f"#EXTINF:-1,{name}\n{url}"
+
+
+def _extract_json_object(text, key):
+    """Extract a JSON object value for a given key from text using brace counting."""
+    marker = f'"{key}":{{'
+    pos = text.find(marker)
+    if pos == -1:
+        return None
+    start = pos + len(f'"{key}":')
+    depth = 0
+    in_string = False
+    escape_next = False
+    for i, ch in enumerate(text[start:]):
+        if escape_next:
+            escape_next = False
+            continue
+        if ch == '\\' and in_string:
+            escape_next = True
+            continue
+        if ch == '"':
+            in_string = not in_string
+            continue
+        if in_string:
+            continue
+        if ch == '{':
+            depth += 1
+        elif ch == '}':
+            depth -= 1
+            if depth == 0:
+                json_str = text[start:start + i + 1]
+                try:
+                    return json.loads(json_str)
+                except Exception:
+                    return None
+    return None
 
 
 def getVideoAndSubInfo(driver):
@@ -248,46 +322,62 @@ def getVideoAndSubInfo(driver):
     subs_info = None
     driver.refresh()
     time.sleep(2)
-    elements = driver.find_elements(By.XPATH, '//script[contains(text(), "serverC")]')
+
+    def find_scripts():
+        els = driver.find_elements(By.XPATH, '//script[contains(text(), "serverC")]')
+        if els:
+            return els
+        return driver.find_elements(By.XPATH, '//script[contains(text(), "mdstrm")]')
+
+    elements = find_scripts()
     if len(elements) == 0:
-        # try multiple times to get the video info
-        tryInfo = 0
-        while tryInfo < 3:
+        for _ in range(3):
             driver.refresh()
             time.sleep(2)
-            elements = driver.find_elements(
-                By.XPATH, '//script[contains(text(), "serverC")]'
-            )
-            if len(elements) > 0:
+            elements = find_scripts()
+            if elements:
                 break
-            else:
-                tryInfo += 1
 
     for element in elements:
-        # Extract the content of the script element using JavaScript
-        script_content = driver.execute_script(
-            "return arguments[0].textContent;", element
-        )
-        # Clean up the content by removing escaped double quotes
-        cleaned_script_content = script_content.replace("\\", "")
-        videoPattern = r"\"serverC\":{(.*?)\}\}"
-        # Use re.search to find the first matching pattern in the text
-        videoMatch = re.search(videoPattern, cleaned_script_content)
-        if videoMatch and video_info == None:
-            video_info_str = videoMatch.group(0)
-            # convert the string to json
-            video_info = json.loads("{" + video_info_str)
-            videoMatch = None
-        # Define the regex pattern
-        subPattern = r"\"movin\":{(.*?)\}\}"
-        # Use regex to find the sub info
-        subMatch = re.search(subPattern, cleaned_script_content)
-        if subMatch and subs_info == None:
-            sub_info_str = subMatch.group(0)
-            subs_info = json.loads("{" + sub_info_str)
-            subMatch = None
+        script_content = driver.execute_script("return arguments[0].textContent;", element)
+        cleaned = script_content.replace("\\", "")
+
+        # Old structure: serverC.hls
+        if video_info is None:
+            serverC = _extract_json_object(cleaned, "serverC")
+            if serverC and "hls" in serverC:
+                video_info = {"serverC": serverC}
+
+        # New structure: dash URL (Platzi 2024+)
+        if video_info is None:
+            dashMatch = re.search(r'"dash":"(https://mdstrm\.com/video/[^"]+\.mpd)"', cleaned)
+            if dashMatch:
+                dash_url = dashMatch.group(1)
+                video_id = dash_url.split('/video/')[1].replace('.mpd', '')
+                # Build serverC-compatible structure so rest of code works unchanged
+                hls_url = f"https://mdstrm.com/video/{video_id}.m3u8"
+                video_info = {"serverC": {"hls": hls_url}}
+
+        # Subtitles (movin) - same in both old and new structure
+        if subs_info is None:
+            movin = _extract_json_object(cleaned, "movin")
+            if movin and "subtitles" in movin:
+                subs_info = {"movin": movin}
+
         if video_info and subs_info:
             break
+
+    # If subtitles not found yet, search any script containing "movin" (some classes store it separately)
+    if subs_info is None:
+        movin_scripts = driver.find_elements(By.XPATH, '//script[contains(text(), "movin")]')
+        for el in movin_scripts:
+            content = driver.execute_script("return arguments[0].textContent;", el)
+            cleaned = content.replace("\\", "")
+            movin = _extract_json_object(cleaned, "movin")
+            if movin and "subtitles" in movin and movin["subtitles"]:
+                subs_info = {"movin": movin}
+                break
+
     return video_info, subs_info
 
 
@@ -340,6 +430,53 @@ def getCourseImage(driver, link, courseName, published):
         pass
 
 
+def getClassPositionFromSidebar(driver, startUrl):
+    """
+    Open the 'Ver clases' modal to detect the current class position and total count.
+    Returns (current_pos, total_classes). Falls back to (1, 0) on failure.
+    """
+    try:
+        course_slug = startUrl.rstrip("/").split("/")[-2]
+        current_slug = startUrl.rstrip("/").split("/")[-1]
+
+        # Click "Ver clases" button to open the class list modal
+        ver_btn = driver.find_elements(By.XPATH, '//*[normalize-space(text())="Ver clases"]')
+        if ver_btn:
+            ver_btn[0].click()
+            time.sleep(1)
+
+        # Collect all class links for this course (href contains /course_slug/)
+        class_links = driver.find_elements(
+            By.XPATH, f'//a[contains(@href, "/{course_slug}/")]'
+        )
+
+        # Deduplicate by slug, preserving DOM order
+        seen_slugs = set()
+        unique_slugs = []
+        for el in class_links:
+            href = el.get_attribute("href") or ""
+            slug = href.rstrip("/").split("/")[-1]
+            if slug and slug != course_slug and slug not in seen_slugs:
+                seen_slugs.add(slug)
+                unique_slugs.append(slug)
+
+        total = len(unique_slugs)
+        pos = 1
+        if current_slug in unique_slugs:
+            pos = unique_slugs.index(current_slug) + 1
+
+        # Close the modal
+        try:
+            driver.find_element(By.TAG_NAME, "body").send_keys(Keys.ESCAPE)
+            time.sleep(0.5)
+        except Exception:
+            pass
+
+        return pos, total
+    except Exception:
+        return 1, 0
+
+
 def work():
     try:
         inputOption, startUrl = menu()
@@ -349,9 +486,6 @@ def work():
         subtitles = {}
         lecturesUrls = []
         words_to_remove = os.environ.get("WORDS_TO_REMOVE")
-        # Enable Performance Logging of Chrome.
-        desired_capabilities = DesiredCapabilities.CHROME
-        desired_capabilities["goog:loggingPrefs"] = {"performance": "ALL"}
         # Create the webdriver object and pass the arguments
         chrome_options = webdriver.ChromeOptions()
         chrome_options.add_argument("--mute-audio")
@@ -361,17 +495,23 @@ def work():
         # chrome_options.add_argument('headless')
         chrome_options.add_argument("--disable-notifications")
         chrome_options.add_argument("--disable-popup-blocking")
-        chrome_options.add_argument("--incognito")
-        # Startup the chrome webdriver with executable path and
-        # pass the chrome options and desired capabilities as
-        # parameters.
-        service = Service(webdriver_path)
-        #!fix replace https://edgedl.me.gvt1.com/edgedl/chrome/chrome-for-testing/
-        #! with https://storage.googleapis.com/chrome-for-testing-public/ in undetected_chromedriver\patcher.py
+        # Detect installed Chrome major version to download matching ChromeDriver
+        def get_chrome_major_version():
+            try:
+                result = _subprocess.run(
+                    ['reg', 'query', r'HKEY_CURRENT_USER\Software\Google\Chrome\BLBeacon', '/v', 'version'],
+                    capture_output=True, text=True
+                )
+                match = re.search(r'(\d+)\.\d+\.\d+\.\d+', result.stdout)
+                if match:
+                    return int(match.group(1))
+            except Exception:
+                pass
+            return None
+        chrome_version = get_chrome_major_version()
         driver = uc.Chrome(
-            service=service,
             options=chrome_options,
-            desired_capabilities=desired_capabilities,
+            version_main=chrome_version,
         )
         driver.get("https://platzi.com/login/")
         load_dotenv()
@@ -388,7 +528,8 @@ def work():
         else:
             print("There was an error finding the continue button")
 
-        pwdInput = WebDriverWait(driver, 5).until(
+        # Wait for password field (may take longer if captcha appears first)
+        pwdInput = WebDriverWait(driver, 60).until(
             EC.visibility_of_element_located(
                 (
                     By.ID,
@@ -407,10 +548,28 @@ def work():
         else:
             print("There was an error finding the login button")
 
+        # Wait for login to complete (may require solving captcha manually)
+        print(colorize_text("Waiting for login... If a captcha appears, solve it manually in Chrome.", "4;33"))
         checkCaptcha = driver.find_elements(By.ID, checkCaptchaSelector)
-        while not checkCaptcha:
+        timeout_login = 120  # 2 minutes to solve captcha
+        elapsed = 0
+        while not checkCaptcha and elapsed < timeout_login:
+            time.sleep(1)
+            elapsed += 1
             checkCaptcha = driver.find_elements(By.ID, checkCaptchaSelector)
+        if not checkCaptcha:
+            print(colorize_text("Login timeout. Please try again.", 31))
+            driver.close()
+            return
         driver.get(startUrl)
+        time.sleep(2)
+        # Dismiss Platzi profile completion popup if it appears
+        try:
+            skip_btn = driver.find_element(By.XPATH, "//*[contains(text(), 'Omitir por ahora')]")
+            skip_btn.click()
+            time.sleep(1)
+        except Exception:
+            pass
         # Check the name of the video
         time.sleep(2)
         lecture = driver.find_elements(
@@ -420,19 +579,39 @@ def work():
         content = driver.find_elements(
             By.XPATH, f"//*[contains(@class, '{contentSelector}')]"
         )
-        checkCourseName = driver.find_elements(
-            By.XPATH, f"//*[contains(@class, '{courseNameSelector}')]"
-        )[1]
-        published = driver.find_element(By.XPATH, publishedDateSelector).text
-        if checkCourseName:
-            courseName = checkCourseName.text
-            courseName = re.sub(r"[^\w\s]", "", courseName)
+        try:
+            published = driver.find_element(By.XPATH, publishedDateSelector).text
+        except:
+            published = ""
+        # Get course name from page title (most reliable - title format: "Class | CourseName | Platzi")
+        courseName = ""
+        try:
+            page_title = driver.title
+            title_parts = page_title.split(" | ")
+            if len(title_parts) >= 2:
+                raw_name = title_parts[-2].strip()  # second-to-last part is always the course name
+                courseName = re.sub(r"[^\w\s]", "", raw_name).strip()
+        except Exception:
+            pass
+        # Fallback to CSS selector, then URL slug
+        if not courseName:
+            courseNameElements = driver.find_elements(
+                By.XPATH, f"//*[contains(@class, '{courseNameSelector}')]"
+            )
+            if len(courseNameElements) > 1:
+                courseName = re.sub(r"[^\w\s]", "", courseNameElements[1].text).strip()
+            elif len(courseNameElements) == 1:
+                courseName = re.sub(r"[^\w\s]", "", courseNameElements[0].text).strip()
+            else:
+                urlParts = startUrl.rstrip("/").split("/")
+                courseName = urlParts[-2] if len(urlParts) >= 2 else "curso"
+        if courseName:
             createFolder("\\videos\\{}".format(courseName))
             courseInfoLink = driver.find_elements(
                 By.XPATH, f"//*[contains(@class, '{courseInfoLinkSelector}')]"
             )
             # get href of the course
-            courseLink = courseInfoLink[0].get_attribute("href")
+            courseLink = courseInfoLink[0].get_attribute("href") if courseInfoLink else startUrl
             if not checkFileExists(
                 f"\\videos\\{courseName}\\folder.png"
             ) and not checkFileExists(f"\\videos\\{courseName}\\folder.jpg"):
@@ -450,6 +629,10 @@ def work():
                 file.write("#EXTM3U\n")
         nameClass = ""
         countVideoErrors = 0
+        # Detect starting class position and total from sidebar (click "Ver clases")
+        classCounter, totalClasses = getClassPositionFromSidebar(driver, startUrl)
+        classCounter -= 1  # will be incremented when the first class is processed
+        number = [str(max(classCounter, 1)), str(totalClasses)]
         while True:
             try:
                 videoPlayer = WebDriverWait(driver, 5).until(
@@ -470,7 +653,8 @@ def work():
                 except:
                     lecture = None
             if videoPlayer or lecture:
-                number = getClassNumber(driver)
+                classCounter += 1
+                number = [str(classCounter), str(totalClasses)]
             if videoPlayer:
                 video_info = None
                 subs_info = None
@@ -479,7 +663,7 @@ def work():
                 video_info, subs_info = getVideoAndSubInfo(driver)
                 if video_info:
                     video = video_info["serverC"]["hls"]
-                    video = f"https://mdstrm.com/{video.split('v1/')[1]}"
+                    # URL is already complete, no transformation needed
                     respVideo = requests.get(video)
                     # check the status code
                     if respVideo.status_code == 200:
@@ -528,16 +712,16 @@ def work():
                         By.XPATH, f"//*[contains(@class, '{contentSelector}')]"
                     )
                     exam = driver.find_elements(By.CLASS_NAME, checkExamSelector)
-                    if len(exam) != 0:
+                    # Also detect exam/evaluacion pages by URL (CSS class may have changed)
+                    if len(exam) != 0 or "/evaluacion/" in driver.current_url:
                         break
             if inputOption == "2":
                 print_progress_bar(int(number[0]), int(number[1]))
             if inputOption == "1":
                 break
-            if number[0] == number[1]:
-                break
             elif len(quiz) == 0:
-                nextPage(driver)
+                if not nextPage(driver):
+                    break
             elif (
                 videoPlayer != None
                 and lecture != None
@@ -609,7 +793,9 @@ def work():
                 "There was an error finding the video, it seems that the server is not available"
             )
         else:
-            print(e)
+            import traceback
+            print(colorize_text("Unexpected error:", 31))
+            traceback.print_exc()
 
 
 if __name__ == "__main__":

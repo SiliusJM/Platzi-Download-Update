@@ -55,6 +55,8 @@ def colorize_text(text, color_code=32):
 
 
 def print_progress_bar(progress, final_number):
+    if not final_number or int(final_number) == 0:
+        return
     bar_length = 50
     filled_length = int(progress * bar_length // final_number)
     bar = "█" * filled_length + "░" * (bar_length - filled_length)

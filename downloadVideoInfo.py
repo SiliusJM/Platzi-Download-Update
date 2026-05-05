@@ -1,123 +1,80 @@
 import subprocess
-import requests
 import re
-import time
-from utils import createFolder, checkIfExtesionExists, print_progress_bar
-from customRequest import request_with_random_user_agent
-
-
-def make_request_with_retries(url, max_retries=3, retry_delay=1):
-    for retry in range(max_retries):
-        try:
-            response = request_with_random_user_agent(url)
-            if response.status_code == 200:
-                return response  # Return the response if successful
-        except requests.exceptions.RequestException as e:
-            print(f"\nRequest failed (retry {retry + 1}/{max_retries})")
-        # Wait before the next retry (using a simple backoff strategy)
-        time.sleep(retry_delay)
-        retry_delay *= 2  # Double the waiting time for the next retry
-    # All retries failed, handle the failure here
-    print("All retries failed.")
-    return None
+import sys
+import os
+from utils import createFolder, checkFileExists
 
 
 def getInfo(url, courseName, className):
-    errorGettingClasses = None
-    folderPath = f"videos/{courseName}/videoInfo"
+    """
+    Downloads a video using ffmpeg directly from the HLS/M3U8 URL.
+    ffmpeg handles all segment downloads internally with proper headers,
+    avoiding 403 errors and manual segment management.
+    """
+    folderPath = f"videos/{courseName}/{className}"
+    outputFile = f"{folderPath}/{className}.mp4"
     createFolder("\\" + folderPath)
-    res = requests.get(url)
-    if res.status_code == 200:
-        # desktop
-        checkFullHD = re.search(r"1920x1080", res.text)
-        checkHD = re.search(r"1280x720", res.text)
-        # mobile
-        checkFullHD2 = re.search(r"1080x1920", res.text)
-        checkHD2 = re.search(r"720x1280", res.text)
-        if checkFullHD:
-            positions = checkFullHD.regs[0]
-            newUrl = res.text[positions[1] + 1 : positions[1] + 1000]
-        elif checkHD:
-            positions = checkHD.regs[0]
-            newUrl = res.text[positions[1] + 1 : positions[1] + 1000]
-        elif checkFullHD2:
-            positions = checkFullHD2.regs[0]
-            newUrl = res.text[positions[1] + 1 : positions[1] + 1000]
-        elif checkHD2:
-            positions = checkHD2.regs[0]
-            newUrl = res.text[positions[1] + 1 : positions[1] + 1000]
-    newRes = request_with_random_user_agent(newUrl)
-    if newRes.status_code == 200:
-        # get the URI
-        findUri = re.search(r'URI="(.*)"', newRes.text)
-        resUri = None
-        if findUri:
-            uriUrl = findUri.group(1)
-            resUri = request_with_random_user_agent(uriUrl)
-        matchesTs = re.findall(r"/([^/]+\.ts)", newRes.text)
-        matchesHttp = re.findall(r"https://.*", newRes.text)
-        i = 0
-        infom3u8 = newRes.text
-        for match in matchesHttp:
-            if "encryption.key" in match:
-                infom3u8 = infom3u8.replace(match, 'encryption.key"')
-            else:
-                infom3u8 = infom3u8.replace(match, matchesTs[i])
-                i += 1
-        with open(f"{folderPath}/info.m3u8", "w") as f:
-            f.write(infom3u8)
-        if resUri:
-            if resUri.status_code == 200:
-                with open(f"{folderPath}/encryption.key", "ab") as f:
-                    f.write(resUri.content)
-        # remove text starting with #
-        text = re.sub(r"#.*\n", "", newRes.text)
-        # split the text by \n
-        array = text.split("\n")
-        # remove the last element of the array
-        array.pop()
-        i = 0
-        print(f"Started downloading {className}")
-        for url in array:
-            resTs = make_request_with_retries(url)
-            # resTs = requests.get(url, headers=headers)
-            if resTs == None:
-                break
-            if resTs.status_code == 200:
-                print_progress_bar(i + 1, len(array))
-                with open(f"{folderPath}/{matchesTs[i]}", "ab") as f:
-                    f.write(resTs.content)
-            else:
-                print(f"error downloading ts file {matchesTs[i]}")
-                break
-            i += 1
-        if resTs == None:
-            print(f"ERROR downloading {className}")
-            errorGettingClasses = className
-        else:
-            # run command to convert the ts files to mp4
-            command = f'cd {folderPath} && ffmpeg -protocol_whitelist file,tls,tcp,https,crypto -allowed_extensions ALL -i info.m3u8 -c copy "{className}".mp4 && move "{className}.mp4" ..\\"{className}.mp4"'
-            subprocess.run(
-                command,
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-                shell=True,
-            )
-            # print(f'Finished downloading {className}')
-        # remove files
-        if checkIfExtesionExists(folderPath, ".ts"):
-            removeTs = subprocess.check_output(
-                f"cd {folderPath} && del *.ts", shell=True
-            )
-        if checkIfExtesionExists(folderPath, ".m3u8"):
-            removem3u8 = subprocess.check_output(
-                f"cd {folderPath} && del *.m3u8", shell=True
-            )
-        if checkIfExtesionExists(folderPath, ".key"):
-            removeKey = subprocess.check_output(
-                f"cd {folderPath} && del *.key", shell=True
-            )
-    else:
-        print(f"error getting info for {className}")
-        errorGettingClasses = className
-    return errorGettingClasses
+
+    if checkFileExists(f"\\videos\\{courseName}\\{className}\\{className}.mp4"):
+        print(f"The file {className} already exists")
+        return None
+
+    print(f"\nStarted downloading: {className}")
+
+    headers_str = (
+        "Referer: https://platzi.com/\r\n"
+        "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+        "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147.0.0.0 Safari/537.36"
+    )
+
+    command = [
+        "ffmpeg", "-y",
+        "-headers", headers_str,
+        "-protocol_whitelist", "file,tls,tcp,https,crypto",
+        "-i", url,
+        "-c:v", "copy",
+        "-c:a", "aac",
+        "-bsf:a", "aac_adtstoasc",
+        "-movflags", "+faststart",
+        outputFile,
+    ]
+
+    process = subprocess.Popen(
+        command,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.PIPE,
+    )
+
+    duration = None
+    duration_pattern = re.compile(r"Duration: (\d{2}):(\d{2}):(\d{2})\.(\d{2})")
+    progress_pattern = re.compile(r"time=(\d{2}):(\d{2}):(\d{2})\.(\d{2})")
+
+    for line in iter(process.stderr.readline, b""):
+        line = line.decode("utf-8", errors="replace")
+        dm = duration_pattern.search(line)
+        if dm:
+            h, m, s, ms = map(int, dm.groups())
+            duration = h * 3600 + m * 60 + s + ms / 100
+        pm = progress_pattern.search(line)
+        if pm and duration:
+            h, m, s, ms = map(int, pm.groups())
+            current = h * 3600 + m * 60 + s + ms / 100
+            pct = min((current / duration) * 100, 100)
+            bar_len = 50
+            filled = int(pct * bar_len // 100)
+            bar = "█" * filled + "░" * (bar_len - filled)
+            sys.stdout.write(f"\r[{bar}] {pct:.1f}%")
+            sys.stdout.flush()
+
+    process.stderr.close()
+    process.wait()
+    sys.stdout.write("\n")
+    sys.stdout.flush()
+
+    if process.returncode != 0:
+        print(f"ERROR downloading {className}")
+        if os.path.exists(outputFile):
+            os.remove(outputFile)
+        return className
+
+    return None
