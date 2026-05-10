@@ -66,7 +66,25 @@ choco install ffmpeg
 
 ---
 
-## 📥 Instalación del proyecto
+## ⚡ Inicio rápido (recomendado)
+
+Si ya tienes **Python**, **FFmpeg** y **Git** instalados, simplemente descarga o clona el repositorio y ejecuta:
+
+```
+run-platzi.bat
+```
+
+El script `run-platzi.bat` hace todo automáticamente:
+- Verifica que Python y FFmpeg estén instalados.
+- Instala las dependencias (`pip install -r requirements.txt`).
+- Lanza el programa (`python main.py`).
+
+> [!NOTE]
+> La primera vez se creará el archivo `.env`. Ciérralo, edítalo con tu email y contraseña de Platzi, y vuelve a ejecutar `run-platzi.bat`.
+
+---
+
+## 📥 Instalación del proyecto (manual)
 
 ```bash
 # 1. Clonar el repositorio
